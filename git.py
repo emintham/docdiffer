@@ -46,6 +46,6 @@ def get_changed_files(branch='master'):
 
     process = checked_command(["git", "diff", "--name-only", branch, "apiv2/serializers"])
 
-    return [re.sub('sigma/', '', x) for x in process.stdout.read().split()]
+    return [re.sub('sigma/', './', x) for x in process.stdout.read().split()]
 
 
