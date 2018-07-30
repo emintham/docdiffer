@@ -41,7 +41,13 @@ class Resolver(object):
     def Assign(node):
         # TODO: We don't usually do multi assignments
         target = node.targets[0]
-        lhs = target.id
+
+        if hasattr(target, 'id'):
+            lhs = target.id
+        else:
+            # This is probably the wrong way to represent this
+            lhs = Resolver.resolve(target.slice)
+
         rhs = node.value
 
         return (lhs, rhs)
@@ -61,6 +67,10 @@ class Resolver(object):
     @staticmethod
     def List(node):
         return [Resolver.resolve(x) for x in node.elts]
+
+    @staticmethod
+    def Index(node):
+        return Resolver.resolve(node.value)
 
     @staticmethod
     def Tuple(node):
@@ -132,6 +142,15 @@ class Resolver(object):
         return fields
 
     @staticmethod
+    def expand_filter_drf_field(node):
+        field_name, rhs = Resolver.resolve(node)
+
+        if not isinstance(rhs, ast.Call):
+            return None
+
+        return Resolver.parse_drf_field_node(field_name, rhs)
+
+    @staticmethod
     def parse_drf_field_node(field_name, field_node):
         return Field(field_name=field_name,
                      func_name=Resolver.resolve(field_node),
@@ -140,5 +159,36 @@ class Resolver(object):
     @staticmethod
     def init_method(init_node):
         fields = Fields()
+
+        """
+        Find instances of
+            if expand_*:
+                self.fields['*'] = Field(*)
+        """
+        # Iterate through the nodes in the body of the __init__ method and
+        # find assignments to the field attribute nested under if statements.
+        for init_body_node in init_node.body:
+
+            # Only care about assignment under if statements for now; this may change.
+            if not isinstance(init_body_node, ast.If):
+                continue
+
+            for if_body_node in init_body_node.body:
+
+                # Only care about assignment for now; this will change.
+                if not isinstance(if_body_node, ast.Assign):
+                    continue
+
+                # Only care about assignments of the form self.fields['something']
+                if not isinstance(if_body_node.targets[0], ast.Subscript):
+                    continue
+
+                # Only care about assignments to the field attribute
+                if not if_body_node.targets[0].value.attr == 'fields':
+                    continue
+
+                fields.add(Resolver.expand_filter_drf_field(if_body_node), overwrite=True)
+
         # TODO: ???
+
         return fields

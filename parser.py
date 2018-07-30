@@ -193,7 +193,7 @@ class FieldFinder(object):
 
     def augment_field(self, previous, current):
         # TODO: ???
-        raise Exception
+        pass
 
     def find_serializer_fields(self, serializer_name):
         nodes = self.serializer_registry.nodes
@@ -240,11 +240,11 @@ class FieldFinder(object):
             dynamic_fields = Resolver.init_method(node)
             for field in dynamic_fields:
                 if field not in fields:
-                    fields.add(field)
+                    fields.add(dynamic_fields[field])
                     continue
 
-                previous_field = fields[field['field_name']]
-                augmented_field = self.augment_field(previous_field, field)
+                previous_field = fields[field]
+                augmented_field = self.augment_field(previous_field, dynamic_fields[field])
                 fields.add(augmented_field, overwrite=True)
 
         self.memo_dict[serializer_name] = fields
