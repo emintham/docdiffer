@@ -45,7 +45,8 @@ class Resolver(object):
         if hasattr(target, 'id'):
             lhs = target.id
         else:
-            # This is probably the wrong way to represent this
+            # This is a Subscript node and should probably be represented
+            # in a better way to demonstrate that.
             lhs = Resolver.resolve(target.slice)
 
         rhs = node.value
@@ -152,6 +153,8 @@ class Resolver(object):
         return (
             isinstance(node, ast.If) and
             # TODO: Might need to support more test types. This isn't flexible.
+            # Currently it only returns true when testing a variable name or
+            # an unary operation like `if some_var` or `if not some_var`.
             (isinstance(node.test, ast.Name) or isinstance(node.test, ast.UnaryOp))
         )
     @staticmethod
