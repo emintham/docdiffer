@@ -192,7 +192,7 @@ class FieldFinder(object):
             raise
 
     def augment_field(self, previous, current):
-        previous.update_representations(current.get('representations', {}))
+        previous.update_representations(current.representations)
 
         return previous
 
