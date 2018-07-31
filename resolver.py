@@ -96,7 +96,7 @@ class Resolver(object):
         return field
 
     @staticmethod
-    def class_var_drf_field(node):
+    def drf_field_assignment(node):
         field_name, rhs = Resolver.resolve(node)
 
         # TODO: we don't care about other class variables.
@@ -142,53 +142,51 @@ class Resolver(object):
         return fields
 
     @staticmethod
-    def expand_filter_drf_field(node):
-        field_name, rhs = Resolver.resolve(node)
-
-        if not isinstance(rhs, ast.Call):
-            return None
-
-        return Resolver.parse_drf_field_node(field_name, rhs)
-
-    @staticmethod
     def parse_drf_field_node(field_name, field_node):
         return Field(field_name=field_name,
                      func_name=Resolver.resolve(field_node),
                      **Resolver.func_params(field_node))
 
     @staticmethod
+    def is_filter_conditional(node):
+        return (
+            isinstance(node, ast.If) and
+            # TODO: Might need to support more test types. This isn't flexible.
+            (isinstance(node.test, ast.Name) or isinstance(node.test, ast.UnaryOp))
+        )
+    @staticmethod
+    def is_assignment_to_field(node):
+        return (
+            isinstance(node, ast.Assign) and
+            isinstance(node.targets[0], ast.Subscript) and
+            isinstance(node.targets[0].value, ast.Attribute) and
+            node.targets[0].value.attr == 'fields'
+        )
+
+    @staticmethod
     def init_method(init_node):
         fields = Fields()
 
-        """
-        Find instances of
-            if expand_*:
-                self.fields['*'] = Field(*)
-        """
-        # Iterate through the nodes in the body of the __init__ method and
-        # find assignments to the field attribute nested under if statements.
+        # TODO: This method currently only detects field assignments
+        # It needs to also support field deletions eventually.
         for init_body_node in init_node.body:
 
-            # Only care about assignment under if statements for now; this may change.
-            if not isinstance(init_body_node, ast.If):
+            if not Resolver.is_filter_conditional(init_body_node):
                 continue
 
             for if_body_node in init_body_node.body:
 
-                # Only care about assignment for now; this will change.
-                if not isinstance(if_body_node, ast.Assign):
+                if not Resolver.is_assignment_to_field(if_body_node):
                     continue
 
-                # Only care about assignments of the form self.fields['something']
-                if not isinstance(if_body_node.targets[0], ast.Subscript):
+                filter_name = Resolver.resolve(init_body_node.test)
+                field = Resolver.drf_field_assignment(if_body_node)
+
+                # TODO: Sometimes fields are assigned to temporary variables
+                # before being assigned to the actual field.
+                if not field:
                     continue
 
-                # Only care about assignments to the field attribute
-                if not if_body_node.targets[0].value.attr == 'fields':
-                    continue
-
-                fields.add(Resolver.expand_filter_drf_field(if_body_node), overwrite=True)
-
-        # TODO: ???
+                fields.add_representation(field['field_name'], filter_name, field)
 
         return fields

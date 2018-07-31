@@ -192,8 +192,9 @@ class FieldFinder(object):
             raise
 
     def augment_field(self, previous, current):
-        # TODO: ???
-        pass
+        previous.update_representations(current.get('representations', {}))
+
+        return previous
 
     def find_serializer_fields(self, serializer_name):
         nodes = self.serializer_registry.nodes
@@ -209,7 +210,7 @@ class FieldFinder(object):
         for node in class_node.body:
             if self.is_class_var(node):
                 # explicit class var trumps Meta
-                fields.add(Resolver.class_var_drf_field(node), overwrite=True)
+                fields.add(Resolver.drf_field_assignment(node), overwrite=True)
             elif self.is_meta(node):
                 fields.extend(Resolver.drf_meta_fields(node))
             elif self.is_init_method(node):
@@ -237,14 +238,14 @@ class FieldFinder(object):
                        ' fields.').format(serializer_name)
                 raise Exception(msg)
 
-            dynamic_fields = Resolver.init_method(node)
-            for field in dynamic_fields:
-                if field not in fields:
-                    fields.add(dynamic_fields[field])
+            dynamic_fields = Resolver.init_method(init_node)
+            for field_name, field in dynamic_fields.iteritems():
+                if field_name not in fields:
+                    fields.add(field)
                     continue
 
-                previous_field = fields[field]
-                augmented_field = self.augment_field(previous_field, dynamic_fields[field])
+                previous_field = fields[field_name]
+                augmented_field = self.augment_field(previous_field, field)
                 fields.add(augmented_field, overwrite=True)
 
         self.memo_dict[serializer_name] = fields

@@ -22,6 +22,17 @@ class Field(dict):
         for key, value in self.DEFAULT_DRF_FIELD_KWARGS.items():
             self.setdefault(key, value)
 
+    def add_representation(self, condition, representation):
+        if not self.get('representations'):
+            self['representations'] = {}
+
+        self['representations'][condition] = representation
+
+    def update_representations(self, representations):
+        if not self.get('representations'):
+            self['representations'] = {}
+
+        self['representations'].update(**representations)
 
 class Fields(dict):
     """
@@ -54,6 +65,20 @@ class Fields(dict):
             return
 
         self[self.get_field_name(field)] = field
+
+    def add_representation(self, field_name, condition, representation, overwrite=False):
+        if not (field_name and condition and representation):
+            return
+
+        if not field_name in self:
+            self.add(Field(field_name=field_name))
+
+        field = self.find(field_name)
+
+        if not overwrite and condition in field.get('representations', {}):
+            return
+
+        field.add_representation(condition, representation)
 
     def find(self, field_name):
         return self[field_name]
