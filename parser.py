@@ -231,22 +231,25 @@ class FieldFinder(object):
             base_class_vars = self.find_serializer_fields(base)
             fields.extend(base_class_vars)
 
+        # Check for dynamic fields that were inherited from direct ancestors.
+        # TODO: Find a better way to support inheritance
+        parent_in_dynamic_fields = any(
+            getattr(parent_class, 'attr', None) in self.dynamic_fields or
+            getattr(parent_class, 'id', None) in self.dynamic_fields
+            for parent_class in class_node.bases)
+
         # dynamic fields trump or augment existing fields
-        if serializer_name in self.dynamic_fields:
-            if not init_node:
-                msg = ('Did not find __init__ in {} but view specifies dynamic'
-                       ' fields.').format(serializer_name)
-                raise Exception(msg)
+        if serializer_name in self.dynamic_fields or parent_in_dynamic_fields:
+            if init_node:
+                dynamic_fields = Resolver.init_method(init_node)
+                for field_name, field in dynamic_fields.iteritems():
+                    if field_name not in fields:
+                        fields.add(field)
+                        continue
 
-            dynamic_fields = Resolver.init_method(init_node)
-            for field_name, field in dynamic_fields.iteritems():
-                if field_name not in fields:
-                    fields.add(field)
-                    continue
-
-                previous_field = fields[field_name]
-                augmented_field = self.augment_field(previous_field, field)
-                fields.add(augmented_field, overwrite=True)
+                    previous_field = fields[field_name]
+                    augmented_field = self.augment_field(previous_field, field)
+                    fields.add(augmented_field, overwrite=True)
 
         self.memo_dict[serializer_name] = fields
 
