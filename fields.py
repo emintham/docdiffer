@@ -22,6 +22,14 @@ class Field(dict):
         for key, value in self.DEFAULT_DRF_FIELD_KWARGS.items():
             self.setdefault(key, value)
 
+        self.representations = {}
+
+    def add_representation(self, cond, representation):
+        self.representations[cond] = representation
+
+    def update_representations(self, representations):
+        self.representations.update(**representations)
+
 
 class Fields(dict):
     """
@@ -30,6 +38,8 @@ class Fields(dict):
 
     ADDED_FMT_STR = "'{}': {}\n"
     REMOVED_FMT_STR = "- '{}': {}\n"
+    ADDED_DYNAMIC_STR = "'{}'\n\t'{}': {}\n"
+    REMOVED_DYNAMIC_STR = "'- {}'\n\t'{}': {}\n"
 
     @classmethod
     def get_field_name(cls, field):
@@ -55,6 +65,20 @@ class Fields(dict):
 
         self[self.get_field_name(field)] = field
 
+    def add_representation(self, field_name, condition, representation, overwrite=False):
+        if not (field_name and condition and representation):
+            return
+
+        if not field_name in self:
+            self.add(Field(field_name=field_name))
+
+        field = self.find(field_name)
+
+        if not overwrite and condition in field.representations:
+            return
+
+        field.add_representation(condition, representation)
+
     def find(self, field_name):
         return self[field_name]
 
@@ -67,6 +91,22 @@ class Fields(dict):
             return colored(self.REMOVED_FMT_STR.format(key, val),
                            consts.Colours.REMOVED)
 
+        def fmt_added_dynamic(condition, key, val):
+            return colored(self.ADDED_DYNAMIC_STR.format(condition, key, val),
+                           consts.Colours.ADDED)
+
+        def fmt_removed_dynamic(condition, key, val):
+            return colored(self.REMOVED_DYNAMIC_STR.format(condition, key, val),
+                           consts.Colours.REMOVED)
+
+        def fmt_representations(field, representations, format_function):
+            output = ''
+
+            for key, val in representations.iteritems():
+                output += format_function(key, field, val)
+
+            return output
+
         current = self.as_dict()
         previous = base.as_dict()
         keys = set(current.keys()).union(previous.keys())
@@ -77,12 +117,19 @@ class Fields(dict):
                 if current[key] == previous[key]:
                     continue
 
-                output += fmt_removed(key, previous[key])
-                output += fmt_added(key, current[key])
+                output += fmt_removed(key, previous[key]['description'])
+                output += fmt_representations(key, previous[key]['representations'], fmt_removed_dynamic)
+
+                output += fmt_added(key, current[key]['description'])
+                output += fmt_representations(key,current[key]['representations'], fmt_added_dynamic)
+
             elif key in current:
-                output += fmt_added(key, current[key])
+                output += fmt_added(key, current[key]['description'])
+                output += fmt_representations(key, current[key]['representations'], fmt_added_dynamic)
+
             else:
-                output += fmt_removed(key, previous[key])
+                output += fmt_removed(key, previous[key]['description'])
+                output += fmt_representations(key, previous[key]['representations'], fmt_removed_dynamic)
 
         return output
 
@@ -99,16 +146,30 @@ class Fields(dict):
 
             return '[{}]'.format(field_type) if field_type else ''
 
-        def describe_field(field):
+        def field_description(field):
             checked_properties = ['required', 'read_only']
             properties = [prop
                           for prop in checked_properties
                           if field[prop]]
             field_type_desc = describe_field_type(field)
             properties_desc = ', '.join(properties)
-            description = ' '.join([field_type_desc, properties_desc]).strip()
+            return ' '.join([field_type_desc, properties_desc]).strip()
 
-            return field['field_name'], description
+        def field_representations(field):
+            return dict(
+                (condition, field_description(representation))
+                for condition, representation
+                in field.representations.iteritems()
+                )
+
+        def describe_field(field):
+            key = field['field_name']
+            value = {
+                'description': field_description(field),
+                'representations': field_representations(field)
+            }
+
+            return key, value
 
         return dict(
             describe_field(field)

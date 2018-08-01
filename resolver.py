@@ -41,7 +41,14 @@ class Resolver(object):
     def Assign(node):
         # TODO: We don't usually do multi assignments
         target = node.targets[0]
-        lhs = target.id
+
+        if hasattr(target, 'id'):
+            lhs = target.id
+        else:
+            # This is a Subscript node and should probably be represented
+            # in a better way to demonstrate that.
+            lhs = Resolver.resolve(target.slice)
+
         rhs = node.value
 
         return (lhs, rhs)
@@ -61,6 +68,10 @@ class Resolver(object):
     @staticmethod
     def List(node):
         return [Resolver.resolve(x) for x in node.elts]
+
+    @staticmethod
+    def Index(node):
+        return Resolver.resolve(node.value)
 
     @staticmethod
     def Tuple(node):
@@ -86,7 +97,7 @@ class Resolver(object):
         return field
 
     @staticmethod
-    def class_var_drf_field(node):
+    def drf_field_assignment(node):
         field_name, rhs = Resolver.resolve(node)
 
         # TODO: we don't care about other class variables.
@@ -138,7 +149,47 @@ class Resolver(object):
                      **Resolver.func_params(field_node))
 
     @staticmethod
+    def is_filter_conditional(node):
+        return (
+            isinstance(node, ast.If) and
+            # TODO: Might need to support more test types. This isn't flexible.
+            # Currently it only returns true when testing a variable name or
+            # an unary operation like `if some_var` or `if not some_var`.
+            (isinstance(node.test, ast.Name) or isinstance(node.test, ast.UnaryOp))
+        )
+    @staticmethod
+    def is_assignment_to_field(node):
+        return (
+            isinstance(node, ast.Assign) and
+            isinstance(node.targets[0], ast.Subscript) and
+            isinstance(node.targets[0].value, ast.Attribute) and
+            node.targets[0].value.attr == 'fields'
+        )
+
+    @staticmethod
     def init_method(init_node):
         fields = Fields()
-        # TODO: ???
+
+        # TODO: This method currently only detects field assignments
+        # It needs to also support field deletions eventually.
+        for init_body_node in init_node.body:
+
+            if not Resolver.is_filter_conditional(init_body_node):
+                continue
+
+            for if_body_node in init_body_node.body:
+
+                if not Resolver.is_assignment_to_field(if_body_node):
+                    continue
+
+                filter_name = Resolver.resolve(init_body_node.test)
+                field = Resolver.drf_field_assignment(if_body_node)
+
+                # TODO: Sometimes fields are assigned to temporary variables
+                # before being assigned to the actual field.
+                if not field:
+                    continue
+
+                fields.add_representation(field['field_name'], filter_name, field)
+
         return fields
